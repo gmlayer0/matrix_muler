@@ -27,7 +27,7 @@ module matrix_mul_ctrl  #(
     parameter int ROW_SIZE = 8,
     parameter int COLUMN_SIZE = 8,
 
-    parameter int BRAM_READ_LATENCY = 3 // BRAM Latency should be no less then 1, for at least one clk is needed for num_valid
+    parameter int BRAM_READ_LATENCY = 1 // BRAM Latency should be no less then 1, for at least one clk is needed for num_valid
 )(
     input clk,
     input rst,
@@ -50,6 +50,8 @@ module matrix_mul_ctrl  #(
     logic [7:0][7:0] input_a;
     logic [7:0][7:0] input_b;
     logic [7:0][31:0] output_r;
+    logic output_valid;
+    logic output_valid_early;
     mac_array #(
         .MULER_WIDTH(8),
         .NUM_WIDTH(12),
@@ -64,7 +66,10 @@ module matrix_mul_ctrl  #(
         .num(num_r),
         .data_a(input_a),
         .data_b(input_b),
-        .result_r(output_r)
+        .result_r(output_r),
+
+        .result_valid_match(output_valid),
+        .result_valid_r(output_valid_early)
     );
 
     // input_address controlling logic
@@ -83,18 +88,34 @@ module matrix_mul_ctrl  #(
     end
 
     // output_address controlling logic
-    logic output_valid;
     logic[14:0] output_len_size;
     logic[14:0] output_addr_last;
     logic[14:0] output_len_size_last;
+    logic[2:0] output_cnt;
+    logic output_cnt_is_zero;
+    assign output_cnt_is_zero = output_cnt == '0;
     always_ff @(posedge clk) begin
-        if(output_valid) begin
+        if(output_cnt_is_zero) begin
             output_addr <= output_addr_last;
             output_len_size <= output_len_size_last;
         end else begin
             output_addr <= output_addr + output_len_size;
         end
     end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            output_cnt <= '0;
+        end else if(output_cnt_is_zero) begin
+            if(output_valid_early) begin
+                output_cnt <= 3'd7;
+            end
+        end else begin
+            output_cnt <= output_cnt - 1;
+        end
+    end
+
+    // output_we controlling logic
+    assign output_we = output_valid;
 
     // output_address pipeline maintain logic
     always_ff @(posedge clk) begin
@@ -114,7 +135,7 @@ module matrix_mul_ctrl  #(
     assign num_valid_r = num_valid_shfit_register[BRAM_READ_LATENCY - 1];
     assign num_r = num_shift_register[BRAM_READ_LATENCY - 1];
 
-    // output_valid controlling logic
+    // execution counting logic (for issue decision)
     logic[11:0] execution_cnt;
     always_ff @(posedge clk) begin
         if(num_valid_r) begin
@@ -127,6 +148,6 @@ module matrix_mul_ctrl  #(
     end
 
     // req_valid controlling logic
-    
+    assign req_valid = ctrl_info.matrix_n > execution_cnt;
 
 endmodule

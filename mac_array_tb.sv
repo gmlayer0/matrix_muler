@@ -4,7 +4,7 @@ module mac_array_tb;
 
     logic clk,rst;
     logic num_valid;
-    logic [15:0] num;
+    logic [11:0] num;
     logic [7:0][7:0] input_a;
     logic [7:0][7:0] input_b;
     always #5 clk = ~clk;
@@ -87,7 +87,7 @@ module mac_array_tb;
 
     mac_array #(
         .MULER_WIDTH(8),
-        .NUM_WIDTH(16),
+        .NUM_WIDTH(12),
         .OUTPUT_WIDTH(32),
         .MULER_DELAY(1),
         .ROW_SIZE(8),

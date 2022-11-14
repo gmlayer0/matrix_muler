@@ -18,7 +18,9 @@ module mac_array #(
     input logic[ROW_SIZE - 1 : 0][MULER_WIDTH - 1 : 0] data_a,
     input logic[COLUMN_SIZE - 1 : 0][MULER_WIDTH - 1 : 0] data_b,
 
-    output logic[ROW_SIZE - 1 : 0][OUTPUT_WIDTH - 1 : 0] result_r
+    output logic[ROW_SIZE - 1 : 0][OUTPUT_WIDTH - 1 : 0] result_r,
+    output logic result_valid_match,
+    output logic result_valid_r
 );
     
     // input data aligning fifo
@@ -162,5 +164,23 @@ module mac_array #(
             end
         end
     endgenerate
+
+    // result_valid_r hanglind
+    logic end_flag_r;
+    always_ff @(posedge clk) begin
+        end_flag_r <= mac_outputs[ROW_SIZE - 1][COLUMN_SIZE - 1].data_ready;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            result_valid_r <= 1'b0;
+        end else if(mac_outputs[ROW_SIZE - 1][0].data_ready) begin
+            result_valid_r <= 1'b1; 
+        end else if(end_flag_r) begin
+            result_valid_r <= 1'b0;
+        end
+    end
+    always_ff @(posedge clk) begin
+        result_valid_match <= result_valid_r;
+    end
 
 endmodule
