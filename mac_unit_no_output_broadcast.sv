@@ -1,6 +1,6 @@
 `timescale 1 ps / 1 ps
 
-module mac_unit #(
+module mac_unit_no_output_broadcast #(
     parameter int MULER_WIDTH = 8,
     parameter int NUM_WIDTH = 8,
     parameter int OUTPUT_WIDTH = 32,
@@ -19,8 +19,9 @@ module mac_unit #(
     input logic[1:0][MULER_WIDTH - 1 : 0] data,
     output logic[1:0][MULER_WIDTH - 1 : 0] data_r,
 
-    input logic[OUTPUT_WIDTH - 1 : 0] result,
-    output logic[OUTPUT_WIDTH - 1 : 0] result_r
+    // input logic[OUTPUT_WIDTH - 1 : 0] result,
+    output logic[OUTPUT_WIDTH - 1 : 0] result_r,
+    output logic data_ready
 );
 
     // num register
@@ -56,20 +57,17 @@ module mac_unit #(
     logic[OUTPUT_WIDTH - 1 : 0] output_r;
     mac_core_8x8_32 mac_core(
         .clk(clk),
-        .rst(rst),
+        .rst(rst || num_valid),
         .a_i(data[0]),
         .b_i(data[1]),
         .output_r
     );
 
     // controller
-    logic data_ready;
     assign data_ready = ((counter_r + MULER_DELAY) == 1);
     always_ff @(posedge clk) begin : result_r_handling
         if(data_ready) begin
             result_r <= output_r;
-        end else begin
-            result_r <= result;
         end
     end
 
