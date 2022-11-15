@@ -1,23 +1,5 @@
 `timescale 1 ps / 1 ps
-
-typedef struct packed {
-    logic valid,
-    logic[14:0] input_a_addr_begin, // matrix A address. A is transposed before send into excution
-    logic[16:0] input_b_addr_begin, // matrix B address. A and B should be aligned into N times of Muler's width. By default, 8
-    logic[14:0] output_c_addr_begin,
-    logic[14:0] a_line_size,
-    logic[16:0] b_line_size,
-    logic[14:0] c_line_size,
-    
-    logic[11:0] matrix_n,
-} matrix_mul_ctrl_t;
-
-typedef logic[14:0]  feature_bram_addr_t;
-typedef logic[16:0]  weight_bram_addr_t;
-typedef logic[14:0]  output_bram_addr_t;
-typedef logic[63:0]  data_64_t;
-typedef logic[255:0] data_256_t;
-// No need response for output.
+`include "matrix_mul_ctrl.svh"
 
 module matrix_mul_ctrl  #(
     parameter int MULER_WIDTH = 8,
@@ -35,30 +17,30 @@ module matrix_mul_ctrl  #(
     input matrix_mul_ctrl_t ctrl_info,
 
     output feature_bram_addr_t feature_addr,
-    input data_64_t feature_resp,
+    input logic[COLUMN_SIZE - 1 : 0][MULER_WIDTH - 1 : 0] feature_resp,
     output weight_bram_addr_t weight_addr,
-    input data_64_t weight_resp,
+    input logic[ROW_SIZE - 1 : 0][MULER_WIDTH - 1 : 0] weight_resp,
 
     output output_bram_addr_t output_addr,
-    output data_256_t output_data,
+    output logic[ROW_SIZE - 1 : 0][OUTPUT_WIDTH - 1 : 0] output_data,
     output logic output_we
 );
 
     // Matrix Muler core
     logic num_valid_r;
-    logic [11:0] num_r;
-    logic [7:0][7:0] input_a;
-    logic [7:0][7:0] input_b;
-    logic [7:0][31:0] output_r;
+    logic [NUM_WIDTH - 1 : 0] num_r;
+    logic [ROW_SIZE - 1 : 0][MULER_WIDTH - 1 : 0] input_a;
+    logic [COLUMN_SIZE - 1 : 0][MULER_WIDTH - 1 : 0] input_b;
+    logic [ROW_SIZE - 1 : 0][OUTPUT_WIDTH - 1 : 0] output_r;
     logic output_valid;
     logic output_valid_early;
     mac_array #(
-        .MULER_WIDTH(8),
-        .NUM_WIDTH(12),
-        .OUTPUT_WIDTH(32),
-        .MULER_DELAY(1),
-        .ROW_SIZE(8),
-        .COLUMN_SIZE(8)
+        .MULER_WIDTH(MULER_WIDTH),
+        .NUM_WIDTH(NUM_WIDTH),
+        .OUTPUT_WIDTH(OUTPUT_WIDTH),
+        .MULER_DELAY(MULER_DELAY),
+        .ROW_SIZE(ROW_SIZE),
+        .COLUMN_SIZE(COLUMN_SIZE)
     ) mac_array_core (
         .clk(clk),
         .rst(rst),
@@ -126,20 +108,22 @@ module matrix_mul_ctrl  #(
     end
 
     // num_valid controlling logic
-    logic[BRAM_READ_LATENCY - 1 : 0] num_valid_shfit_register;
+    logic[BRAM_READ_LATENCY - 1 : 0] num_valid_shift_register;
     logic[BRAM_READ_LATENCY - 1 : 0][11:0] num_shift_register;
     always_ff @(posedge clk) begin
-        num_valid_shift_register <= {num_valid_shfit_register[BRAM_READ_LATENCY - 2 : 0], req_valid};
+        num_valid_shift_register <= {num_valid_shift_register[BRAM_READ_LATENCY - 2 : 0], req_valid};
         num_shift_register <= {num_shift_register[BRAM_READ_LATENCY - 2 : 0], ctrl_info.matrix_n};
     end
-    assign num_valid_r = num_valid_shfit_register[BRAM_READ_LATENCY - 1];
+    assign num_valid_r = num_valid_shift_register[BRAM_READ_LATENCY - 1];
     assign num_r = num_shift_register[BRAM_READ_LATENCY - 1];
 
     // execution counting logic (for issue decision)
     logic[11:0] execution_cnt;
     always_ff @(posedge clk) begin
-        if(num_valid_r) begin
-            execution_cnt <= MULER_DELAY + num_r;
+        if(rst) begin
+            execution_cnt <= '0;
+        end else if(req_valid) begin
+            execution_cnt <= COLUMN_SIZE + num_r - 2; // Critical, adjusted by test&simulation but not calculation.
         end else begin
             if(execution_cnt != 0) begin
                 execution_cnt <= execution_cnt - 1;
@@ -148,6 +132,12 @@ module matrix_mul_ctrl  #(
     end
 
     // req_valid controlling logic
-    assign req_valid = ctrl_info.matrix_n > execution_cnt;
+    assign req_valid = ((COLUMN_SIZE - 1) > execution_cnt) & (ctrl_info.matrix_n > execution_cnt) & ctrl_info.valid;
+    // Critical, adjusted by test&simulation but not calculation.
+
+    // connect core and memory bus
+    assign input_a = weight_resp;
+    assign input_b = feature_resp;
+    assign output_data = output_r;
 
 endmodule
