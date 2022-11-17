@@ -48,7 +48,7 @@ module mac_unit_no_output_broadcast #(
     always_ff @(posedge clk) begin : counter_handling
         if(rst || num_valid) begin
             counter_r <= num;
-        end else begin
+        end else if(counter_r != '1) begin
             counter_r <= counter_r - 1;
         end
     end

@@ -133,6 +133,18 @@ module mac_array #(
                 end end
 
                 if(row_id == 0) begin
+                    logic [$clog2(ROW_SIZE) - 1 : 0]output_cnt;
+                    // counter controlling
+                    always_ff @(posedge clk) begin
+                        if(rst || mac_outputs[0][column_id].data_ready) begin
+                            output_cnt <= '0;
+                        end else begin
+                            output_cnt <= output_cnt + 1;
+                        end
+                    end
+                    always_ff @(posedge clk) begin
+                        result[column_id] <= mac_outputs[output_cnt][column_id].result;
+                    end
                     assign mac_inputs[row_id][column_id].data_0   = data_b_r[column_id]; // row data 
                 end else begin
                     assign mac_inputs[row_id][column_id].data_0   = mac_outputs[row_id - 1][column_id].data_0; // row data 
@@ -149,18 +161,6 @@ module mac_array #(
                 //     assign mac_inputs[row_id][column_id].result = mac_outputs[row_id][column_id + 1].result;
                 // end
                 // Above method makes many bubble in output. An optional choice is use eight 8-1 MUX for output. I use 8-1 MUX here.
-            end
-            logic [$clog2(COLUMN_SIZE) - 1 : 0]output_cnt;
-            // counter controlling
-            always_ff @(posedge clk) begin
-                if(rst || mac_outputs[row_id][0].data_ready) begin
-                    output_cnt <= '0;
-                end else begin
-                    output_cnt <= output_cnt + 1;
-                end
-            end
-            always_ff @(posedge clk) begin
-                result[row_id] <= mac_outputs[row_id][output_cnt].result;
             end
         end
     endgenerate

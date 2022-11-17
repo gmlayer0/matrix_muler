@@ -19,7 +19,7 @@ module matrix_mul_ctrl  #(
     output feature_bram_addr_t feature_addr,
     input logic[COLUMN_SIZE - 1 : 0][MULER_WIDTH - 1 : 0] feature_resp,
     output weight_bram_addr_t weight_addr,
-    input logic[ROW_SIZE - 1 : 0][MULER_WIDTH - 1 : 0] weight_resp,
+    input logic[ROW_SIZE - 1 : 0][MULER_WIDTH - 1 : 0] weight_resp,     //T
 
     output output_bram_addr_t output_addr,
     output logic[ROW_SIZE - 1 : 0][OUTPUT_WIDTH - 1 : 0] output_data,
@@ -55,8 +55,8 @@ module matrix_mul_ctrl  #(
     );
 
     // input_address controlling logic
-    logic[14:0] feature_len_size;
-    logic[16:0] weight_len_size;
+    feature_bram_addr_t feature_len_size;
+    weight_bram_addr_t weight_len_size;
     always_ff @(posedge clk) begin
         if(req_valid & ctrl_info.valid) begin
             feature_addr <= ctrl_info.input_a_addr_begin;
@@ -69,51 +69,75 @@ module matrix_mul_ctrl  #(
         end
     end
 
-    // output_address controlling logic
-    logic[14:0] output_len_size;
-    logic[14:0] output_addr_last;
-    logic[14:0] output_len_size_last;
-    logic[2:0] output_cnt;
-    logic output_cnt_is_zero;
-    assign output_cnt_is_zero = output_cnt == '0;
+    // output_address fifo. at least 4 is needed
+    typedef struct packed {
+        output_bram_addr_t addr;
+        output_bram_addr_t len_size;
+    } output_meta_t;
+    output_meta_t [3:0]output_meta_fifo;
+    logic[1:0] fifo_wptr;
+    logic[1:0] fifo_rptr;
     always_ff @(posedge clk) begin
-        if(output_cnt_is_zero) begin
-            output_addr <= output_addr_last;
-            output_len_size <= output_len_size_last;
-        end else begin
-            output_addr <= output_addr + output_len_size;
+        if(rst) begin
+            fifo_wptr <= '0;
+        end else if(req_valid & ctrl_info.valid) begin
+            output_meta_fifo[fifo_wptr].addr <= ctrl_info.output_c_addr_begin;
+            output_meta_fifo[fifo_wptr].len_size <= ctrl_info.c_line_size;
+            fifo_wptr <= fifo_wptr + 1;
         end
     end
+
+    // output counter
+    logic[2:0] output_cnt;
     always_ff @(posedge clk) begin
         if(rst) begin
             output_cnt <= '0;
-        end else if(output_cnt_is_zero) begin
-            if(output_valid_early) begin
-                output_cnt <= 3'd7;
-            end
-        end else begin
+        end else if(output_cnt) begin
             output_cnt <= output_cnt - 1;
+        end else if(output_valid_early) begin
+            output_cnt <= 7;
         end
     end
+
+    // fifo pop controller
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            fifo_rptr <= '0;
+        end else if(output_cnt == 7) begin
+            fifo_rptr <= fifo_rptr + 1;
+        end
+    end
+
+    // output address controller
+    output_meta_t output_meta;
+    always_ff @(posedge clk) begin
+        if(output_cnt == '0) begin
+            output_meta <= output_meta_fifo[fifo_rptr];
+        end else begin
+            output_meta.addr <= output_meta.addr + output_meta.len_size;
+        end
+    end
+    assign output_addr = output_meta.addr;
 
     // output_we controlling logic
     assign output_we = output_valid;
 
-    // output_address pipeline maintain logic
-    always_ff @(posedge clk) begin
-        if(req_valid & ctrl_info.valid) begin
-            output_addr_last <= ctrl_info.output_c_addr_begin;
-            output_len_size_last <= ctrl_info.c_line_size;
-        end
-    end
-
     // num_valid controlling logic
     logic[BRAM_READ_LATENCY - 1 : 0] num_valid_shift_register;
     logic[BRAM_READ_LATENCY - 1 : 0][11:0] num_shift_register;
-    always_ff @(posedge clk) begin
-        num_valid_shift_register <= {num_valid_shift_register[BRAM_READ_LATENCY - 2 : 0], req_valid};
-        num_shift_register <= {num_shift_register[BRAM_READ_LATENCY - 2 : 0], ctrl_info.matrix_n};
+    generate
+    if(BRAM_READ_LATENCY > 1) begin
+        always_ff @(posedge clk) begin
+            num_valid_shift_register <= {num_valid_shift_register[BRAM_READ_LATENCY - 2 : 0], req_valid};
+            num_shift_register <= {num_shift_register[BRAM_READ_LATENCY - 2 : 0], ctrl_info.matrix_n};
+        end
+    end else begin
+        always_ff @(posedge clk) begin
+            num_valid_shift_register <= req_valid;
+            num_shift_register <= ctrl_info.matrix_n;
+        end
     end
+    endgenerate
     assign num_valid_r = num_valid_shift_register[BRAM_READ_LATENCY - 1];
     assign num_r = num_shift_register[BRAM_READ_LATENCY - 1];
 
@@ -123,7 +147,7 @@ module matrix_mul_ctrl  #(
         if(rst) begin
             execution_cnt <= '0;
         end else if(req_valid) begin
-            execution_cnt <= COLUMN_SIZE + num_r - 2; // Critical, adjusted by test&simulation but not calculation.
+            execution_cnt <= COLUMN_SIZE + ctrl_info.matrix_n - 2; // Critical, adjusted by test&simulation but not calculation.
         end else begin
             if(execution_cnt != 0) begin
                 execution_cnt <= execution_cnt - 1;
@@ -136,8 +160,8 @@ module matrix_mul_ctrl  #(
     // Critical, adjusted by test&simulation but not calculation.
 
     // connect core and memory bus
-    assign input_a = weight_resp;
-    assign input_b = feature_resp;
+    assign input_a = feature_resp;
+    assign input_b = weight_resp;
     assign output_data = output_r;
 
 endmodule
