@@ -60,7 +60,7 @@ module mac_array #(
     generate
         assign result_r[ROW_SIZE - 1] = result[ROW_SIZE - 1];
         for(genvar row_id = 0 ; row_id < ROW_SIZE - 1; row_id += 1) begin : result_register_handling
-            logic[ROW_SIZE - row_id - 2: 0][MULER_WIDTH - 1 : 0] result_tmp_r;
+            logic[ROW_SIZE - row_id - 2: 0][OUTPUT_WIDTH - 1 : 0] result_tmp_r;
             always_ff @(posedge clk) begin
                 result_tmp_r[0] <= result[row_id];
             end

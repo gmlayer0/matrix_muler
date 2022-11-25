@@ -1,5 +1,4 @@
 `timescale 1 ps / 1 ps
-`include "matrix_mul_ctrl.svh"
 
 module top_tb;
     logic clk;
@@ -96,7 +95,7 @@ module top_tb;
         };
         bram_c <= '0;
         bram_d <= {
-            {16'd0,16'd8,16'd8,16'd8},{16'd0,16'd8,16'd8,16'd8},
+            {16'd0,16'd9,16'd32,16'd32},{16'd0,16'd9,16'd32,16'd32},
             64'd1}; 
         end
         if(bram_a_we) begin
@@ -114,7 +113,7 @@ module top_tb;
     end
 
     initial begin
-        #120
+        #400
         $finish();
     end
 

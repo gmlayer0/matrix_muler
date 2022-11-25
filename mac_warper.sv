@@ -11,12 +11,12 @@ module mac_core_8x8_32 (
 logic[15:0] mul;
 always_comb begin : muler
     mul = a_i * b_i;
-    // if(a_i[7]) begin
-    //     mul[15:8] = mul[15:8] - b_i;
-    // end
-    if(b_i[7]) begin
-        mul[15:8] = mul[15:8] - a_i;
+    if(a_i[7]) begin
+        mul[15:8] = mul[15:8] - b_i;
     end
+    // if(b_i[7]) begin
+    //     mul[15:8] = mul[15:8] - a_i;
+    // end
 end
 // mult_s8_u8 mul_core(
 //     .A(a_i),
@@ -26,9 +26,9 @@ end
 
 always_ff @(posedge clk) begin : output_register
     if(rst) begin
-        output_r <= 0;
+        output_r <= '0;
     end else begin
-        output_r <= mul + output_r;
+        output_r <= {{16{mul[15]}},mul} + output_r;
     end
 end
 
